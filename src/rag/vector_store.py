@@ -1,12 +1,15 @@
-from typing import List, Dict, Any
-import faiss
 import json
-import numpy as np
 from pathlib import Path
-from .embeddings import OllamaEmbeddings
-from ..logging_utils import get_logger, emit_metric, span
+from typing import Any, Dict, List
 
-logger = get_logger('vector_store')
+import faiss
+import numpy as np
+
+from ..logging_utils import emit_metric, get_logger, span
+from .embeddings import OllamaEmbeddings
+
+logger = get_logger("vector_store")
+
 
 class FaissStore:
     def __init__(self, index_path: str, meta_path: str, dim: int | None = None):
@@ -23,11 +26,11 @@ class FaissStore:
         self.dim = dim
 
     def add(self, vectors: List[List[float]], metas: List[Dict[str, Any]]):
-        arr = np.array(vectors, dtype='float32')
+        arr = np.array(vectors, dtype="float32")
         if self._index is None:
             self._create_index(arr.shape[1])
         elif arr.shape[1] != self.dim:
-            raise ValueError('Dimension mismatch')
+            raise ValueError("Dimension mismatch")
         # Normalize for cosine similarity approximate
         faiss.normalize_L2(arr)
         self._index.add(arr)
@@ -36,7 +39,7 @@ class FaissStore:
     def search(self, query: List[float], k: int = 5):
         if self._index is None:
             return []
-        q = np.array([query], dtype='float32')
+        q = np.array([query], dtype="float32")
         faiss.normalize_L2(q)
         scores, idxs = self._index.search(q, k)
         results = []
@@ -44,22 +47,22 @@ class FaissStore:
             if idx < 0:
                 continue
             meta = self._metas[idx]
-            results.append({'score': float(score), **meta})
+            results.append({"score": float(score), **meta})
         return results
 
     def persist(self):
         if self._index is not None:
             faiss.write_index(self._index, str(self.index_path))
-        with self.meta_path.open('w', encoding='utf-8') as f:
+        with self.meta_path.open("w", encoding="utf-8") as f:
             for m in self._metas:
-                f.write(json.dumps(m, ensure_ascii=False) + '\n')
+                f.write(json.dumps(m, ensure_ascii=False) + "\n")
 
     def _load(self):
         self._index = faiss.read_index(str(self.index_path))
-        with self.meta_path.open('r', encoding='utf-8') as f:
+        with self.meta_path.open("r", encoding="utf-8") as f:
             self._metas = [json.loads(line) for line in f]
         if self._metas:
-            sample_vec = self._metas[0].get('vector')
+            sample_vec = self._metas[0].get("vector")
             if sample_vec:
                 self.dim = len(sample_vec)
 
@@ -72,47 +75,51 @@ def build_or_update(chunks: List[Dict], store: FaissStore, embed_model: OllamaEm
     - For each new chunk, attempt embedding with progressive truncation lengths.
     - On total failure, skip that chunk (log in returned stats via negative count placeholder if needed).
     """
-    existing_hashes = {m['hash'] for m in store._metas if 'hash' in m}
-    new_chunks = [c for c in chunks if c['hash'] not in existing_hashes]
+    existing_hashes = {m["hash"] for m in store._metas if "hash" in m}
+    new_chunks = [c for c in chunks if c["hash"] not in existing_hashes]
     if not new_chunks:
         return 0
     vectors = []
     metas = []
     skipped = 0
     for c in new_chunks:
-        content = c['content']
+        content = c["content"]
         attempts = [None, 2000, 1200, 800, 600, 400]
         vec = None
         last_err = None
         for lim in attempts:
             text_try = content if lim is None else content[:lim]
             try:
-                with span('embed_one', logger, limit=lim if lim else -1, orig_len=len(content)):
+                with span("embed_one", logger, limit=lim if lim else -1, orig_len=len(content)):
                     vec = embed_model.embed_documents([text_try])[0]
                 # mark truncated
                 if lim is not None and lim < len(content):
-                    c['truncated_to'] = lim
+                    c["truncated_to"] = lim
                 break
             except Exception as e:
                 last_err = e
                 logger.warning(f"embed_fail hash={c['hash']} limit={lim} err={e}")
-                emit_metric('embed_fail', hash=c['hash'], limit=lim if lim else -1, error=str(e))
+                emit_metric("embed_fail", hash=c["hash"], limit=lim if lim else -1, error=str(e))
                 continue
         if vec is None:
             skipped += 1
-            logger.error(f"embed_skip hash={c['hash']} reason=all_attempts_failed last_err={last_err}")
-            emit_metric('embed_skip', hash=c['hash'], error=str(last_err) if last_err else '')
+            logger.error(
+                f"embed_skip hash={c['hash']} reason=all_attempts_failed last_err={last_err}"
+            )
+            emit_metric("embed_skip", hash=c["hash"], error=str(last_err) if last_err else "")
             continue
-        m = {k: c[k] for k in ('hash','source','content') if k in c}
-        if 'truncated_to' in c:
-            m['truncated_to'] = c['truncated_to']
-        m['vector'] = vec
+        m = {k: c[k] for k in ("hash", "source", "content") if k in c}
+        if "truncated_to" in c:
+            m["truncated_to"] = c["truncated_to"]
+        m["vector"] = vec
         metas.append(m)
         vectors.append(vec)
     if vectors:
         store.add(vectors, metas)
         store.persist()
-    logger.info(f"build_or_update added={len(vectors)} skipped={skipped} new_total={len(store._metas)}")
-    emit_metric('build_or_update', added=len(vectors), skipped=skipped, total=len(store._metas))
+    logger.info(
+        f"build_or_update added={len(vectors)} skipped={skipped} new_total={len(store._metas)}"
+    )
+    emit_metric("build_or_update", added=len(vectors), skipped=skipped, total=len(store._metas))
     # Optionally could return (added, skipped)
     return len(vectors)

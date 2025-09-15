@@ -1,6 +1,8 @@
-from django.apps import AppConfig
 import os
+
+from django.apps import AppConfig
 from dotenv import load_dotenv
+
 load_dotenv()
 
 
@@ -14,15 +16,16 @@ class RagApiConfig(AppConfig):
             return
         try:
             # Lazy import to avoid issues during migrations
-            from pathlib import Path
             import sys
+            from pathlib import Path
+
             ROOT = Path(__file__).resolve().parents[2]
             if str(ROOT) not in sys.path:
                 sys.path.insert(0, str(ROOT))
             from src.config import get_settings as _get
             from src.rag.embeddings import OllamaEmbeddings
-            from src.rag.vector_store import FaissStore
             from src.rag.llm import get_default_llm
+            from src.rag.vector_store import FaissStore
 
             s = _get()
             embed = OllamaEmbeddings(s.embed_model)

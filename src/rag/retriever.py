@@ -1,14 +1,19 @@
-from typing import List, Dict, Optional
-from .vector_store import FaissStore
-from .embeddings import OllamaEmbeddings
-from rank_bm25 import BM25Okapi
-import jieba
-from ..logging_utils import get_logger, emit_metric
+from typing import Dict, List, Optional
 
-logger = get_logger('retriever')
+import jieba
+from rank_bm25 import BM25Okapi
+
+from ..logging_utils import emit_metric, get_logger
+from .embeddings import OllamaEmbeddings
+from .vector_store import FaissStore
+
+logger = get_logger("retriever")
+
 
 class Retriever:
-    def __init__(self, store: FaissStore, embed: OllamaEmbeddings, k: int = 6, bm25_weight: float = 0.35):
+    def __init__(
+        self, store: FaissStore, embed: OllamaEmbeddings, k: int = 6, bm25_weight: float = 0.35
+    ):
         self.store = store
         self.embed = embed
         self.k = k
@@ -21,7 +26,7 @@ class Retriever:
         # Build BM25 corpus from metas contents
         tokens_corpus = []
         for m in self.store._metas:
-            text = m.get('content','')
+            text = m.get("content", "")
             toks = list(jieba.cut_for_search(text))
             tokens_corpus.append(toks)
             self._bm25_docs.append(m)
@@ -46,7 +51,7 @@ class Retriever:
         for i in idx_sorted:
             meta = self._bm25_docs[i]
             norm = scores[i] / max_score if max_score else 0.0
-            out.append({'score': norm, **meta, 'bm25_raw': scores[i]})
+            out.append({"score": norm, **meta, "bm25_raw": scores[i]})
         return out
 
     def get_relevant(self, query: str) -> List[Dict]:
@@ -54,8 +59,10 @@ class Retriever:
             results = self.vector_search(query, self.k)
             # log simple results
             for i, r in enumerate(results):
-                logger.debug(f"hit[{i}] vec_only score={r['score']:.4f} src={r.get('source','')} hash={r['hash']}")
-            emit_metric('retrieve', mode='vector', hits=len(results), bm25_weight=0)
+                logger.debug(
+                    f"hit[{i}] vec_only score={r['score']:.4f} src={r.get('source','')} hash={r['hash']}"
+                )
+            emit_metric("retrieve", mode="vector", hits=len(results), bm25_weight=0)
             return results
         vec_k = min(max(self.k * 2, self.k + 2), self.k * 4)  # adaptive over-fetch
         bm_k = vec_k
@@ -63,28 +70,35 @@ class Retriever:
         bres = self.bm25_search(query, bm_k)
         merged: Dict[str, Dict] = {}
         for r in vres:
-            merged[r['hash']] = {
-                'combined': r['score'] * (1 - self.bm25_weight),
-                'vec_score': r['score'],
-                'bm25_score': 0.0,
-                **r
+            merged[r["hash"]] = {
+                "combined": r["score"] * (1 - self.bm25_weight),
+                "vec_score": r["score"],
+                "bm25_score": 0.0,
+                **r,
             }
         for r in bres:
-            if r['hash'] in merged:
-                merged[r['hash']]['combined'] += r['score'] * self.bm25_weight
-                merged[r['hash']]['bm25_score'] = r['score']
+            if r["hash"] in merged:
+                merged[r["hash"]]["combined"] += r["score"] * self.bm25_weight
+                merged[r["hash"]]["bm25_score"] = r["score"]
             else:
-                merged[r['hash']] = {
-                    'combined': r['score'] * self.bm25_weight,
-                    'vec_score': 0.0,
-                    'bm25_score': r['score'],
-                    **r
+                merged[r["hash"]] = {
+                    "combined": r["score"] * self.bm25_weight,
+                    "vec_score": 0.0,
+                    "bm25_score": r["score"],
+                    **r,
                 }
-        ranked = sorted(merged.values(), key=lambda x: x['combined'], reverse=True)[: self.k]
+        ranked = sorted(merged.values(), key=lambda x: x["combined"], reverse=True)[: self.k]
         # detailed logging (limit 15 lines)
         for i, r in enumerate(ranked[:15]):
             logger.debug(
                 f"hit[{i}] combined={r['combined']:.4f} vec={r.get('vec_score',0):.4f} bm25={r.get('bm25_score',0):.4f} src={r.get('source','')} hash={r['hash']}"
             )
-        emit_metric('retrieve', mode='hybrid', hits=len(ranked), bm25_weight=self.bm25_weight, cand_vec=len(vres), cand_bm=len(bres))
+        emit_metric(
+            "retrieve",
+            mode="hybrid",
+            hits=len(ranked),
+            bm25_weight=self.bm25_weight,
+            cand_vec=len(vres),
+            cand_bm=len(bres),
+        )
         return ranked

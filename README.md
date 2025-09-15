@@ -23,6 +23,71 @@ copy configs\settings.example.env .env
 ollama pull nomic-embed-text:v1.5
 ```
 
+### Windows 平台特别说明（PowerShell）
+在 Windows 上运行本项目时，FAISS 和本地 Ollama 可能需要额外准备。下面是常见问题与推荐的安装步骤：
+
+- 推荐先启用虚拟环境（PowerShell 举例）：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+- FAISS（向量索引）
+	- Windows 对官方 faiss 包支持有限。推荐使用 conda（推荐）或查找适配的 wheel：
+		- Conda（推荐）：
+			```powershell
+			# 如果使用 Anaconda/Miniconda
+			conda create -n rag python=3.10 -y
+			conda activate rag
+			conda install -c conda-forge faiss-cpu -y
+			pip install -r requirements.txt
+			```
+		- Pip：如果你不使用 conda，可尝试查找 community wheel（针对 Windows 的 faiss 轮子），或者在 Windows 下使用 faiss 的替代（例如 use sqlite + annoy/hnswlib）作为备选。
+	- 备注：如果遇到 faiss 安装问题，另外的稳妥做法是使用 WSL2（Ubuntu 子系统）来运行服务并把数据目录挂载到 Windows 文件系统。
+
+- Ollama（本地嵌入模型）
+	- 先在机器上安装 Ollama：参考 https://ollama.com 安装说明（Windows 支持的版本/安装方式可能随时间变化）。安装完成后确保 Ollama 守护进程在本机运行（通常为 localhost:11434）。
+	- 拉取嵌入模型并测试：
+		```powershell
+		# 拉取模型（示例）
+		ollama pull nomic-embed-text:v1.5
+
+		# 测试嵌入（调用 ollama CLI）
+		ollama run nomic-embed-text:v1.5 --text "测试文本"
+		```
+	- 如果 Ollama 在 Windows 上不可用或不想使用本地服务，可改用远端 embedding（如 OpenAI/other providers）或在本地运行 Ollama 的 Linux 容器/WSL2。
+
+- 运行/调试常用命令（PowerShell）
+	```powershell
+	# 激活虚拟环境
+	.\.venv\Scripts\Activate.ps1
+
+	# 增量摄取（示例）
+	python -m src.cli ingest
+
+	# 全量重建索引（会清空旧索引）
+	python -m src.cli ingest --rebuild
+
+	# 启动 API 服务（开发）
+	python -m src.api.server
+
+	# 运行 tests（仅项目 tests 目录）
+	D:\langchain-RAG\.venv\Scripts\python.exe -m pytest -q tests
+	```
+
+- pre-commit（在虚拟环境中运行）
+	- 如果 `pre-commit` 无法直接从 PowerShell 调用，建议使用虚拟环境的 python -m 形式：
+		```powershell
+		.\.venv\Scripts\Activate.ps1
+		python -m pip install --upgrade pre-commit
+		python -m pre_commit install
+		python -m pre_commit run --all-files
+		```
+
+以上说明覆盖了大多数 Windows 常见问题与可行替代方案；如果你使用 WSL2/远端主机，建议在 Linux 环境中安装 FAISS 与 Ollama 以减少兼容性问题。
+
 ### 摄取文档 (.docx + .pdf)
 ```
 python -m src.cli ingest               # 增量更新

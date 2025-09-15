@@ -93,8 +93,12 @@ REST_FRAMEWORK = {
 
 # RAG project integration
 DOCS_ROOT = os.environ.get("DOCS_ROOT", str(Path(__file__).resolve().parents[2] / "2025国赛"))
-VECTOR_STORE_PATH = os.environ.get("VECTOR_STORE_PATH", str(Path(__file__).resolve().parents[2] / "vector_store" / "index.faiss"))
-METADATA_STORE_PATH = os.environ.get("METADATA_STORE_PATH", str(Path(__file__).resolve().parents[2] / "vector_store" / "meta.jsonl"))
+VECTOR_STORE_PATH = os.environ.get(
+    "VECTOR_STORE_PATH", str(Path(__file__).resolve().parents[2] / "vector_store" / "index.faiss")
+)
+METADATA_STORE_PATH = os.environ.get(
+    "METADATA_STORE_PATH", str(Path(__file__).resolve().parents[2] / "vector_store" / "meta.jsonl")
+)
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "nomic-embed-text:v1.5")
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "900"))
 CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "150"))

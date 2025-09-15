@@ -32,6 +32,7 @@ metrics.jsonl
 # Environment files
 .env
 .env.*
+.env.local
 
 # Databases
 *.db
@@ -43,6 +44,7 @@ db.sqlite3
 index.faiss
 *.faiss
 vector_store/
+meta.jsonl
 
 # Caches
 .mypy_cache/
@@ -58,7 +60,25 @@ node_modules/
 *.tmp
 *.bak
 __pycache__/
-.env
 vector_store/
 *.pyc
 .ipynb_checkpoints/
+
+# Large example / dataset folders (not needed in repo)
+2025国赛/
+
+# Frontend / build artifacts
+dist/
+build/
+frontend/dist/
+frontend/.vite/
+
+# Editor/IDE
+.vscode/
+.idea/
+
+# Misc
+*.swp
+*.swo
+*.DS_Store
+Thumbs.db

@@ -1,0 +1,64 @@
+.venv/
+venv/
+env/
+ENV/
+.Python
+
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and metrics
+*.log
+logs/
+metrics.jsonl
+
+# Environment files
+.env
+.env.*
+
+# Databases
+*.db
+*.sqlite3
+users.db
+db.sqlite3
+
+# FAISS / vector store artifacts
+index.faiss
+*.faiss
+vector_store/
+
+# Caches
+.mypy_cache/
+.pytest_cache/
+.cache/
+.cache/pre-commit/
+.pre-commit/
+
+# Node
+node_modules/
+
+# Temp
+*.tmp
+*.bak
+__pycache__/
+.env
+vector_store/
+*.pyc
+.ipynb_checkpoints/

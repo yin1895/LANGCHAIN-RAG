@@ -1,0 +1,25 @@
+langchain>=0.2.0
+python-docx>=1.0.0
+faiss-cpu>=1.8.0
+fastapi>=0.111.0
+uvicorn>=0.30.0
+django>=5.0.0
+djangorestframework>=3.15.0
+django-cors-headers>=4.3.1
+python-dotenv>=1.0.1
+pydantic>=2.7.0
+tenacity>=8.2.3
+httpx>=0.27.0
+beautifulsoup4>=4.12.3
+lxml>=5.2.2
+rapidfuzz>=3.9.0
+orjson>=3.10.0
+numpy>=1.26.0
+scikit-learn>=1.4.0
+# rerank/embedding local helpers (optional)
+sentence-transformers>=2.7.0
+rank-bm25>=0.2.2
+jieba>=0.42.1
+rich>=13.7.1
+textual>=0.58.0
+pdfminer.six>=20231228

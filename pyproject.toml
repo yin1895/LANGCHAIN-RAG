@@ -1,0 +1,17 @@
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 100
+extend-ignore = ['E203']
+extend-exclude = ["2025国赛", ".venv", "frontend/node_modules", "vector_store"]
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-q"
+
+ 

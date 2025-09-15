@@ -6,9 +6,10 @@ repos:
         language_version: python3
 
   - repo: https://github.com/charliermarsh/ruff
-    # Temporarily pin to main to avoid missing tag ('0.1.0') during pre-commit init.
-    # Recommendation: replace with a stable release tag (e.g. 'v0.1.58') when ready.
-    rev: main
+    # Pin to a known stable release tag to avoid missing/tag checkout errors during
+    # pre-commit initialization. If this tag becomes outdated, update to a
+    # newer stable ruff release (for example: 'v0.1.58').
+    rev: v0.1.58
     hooks:
       - id: ruff
         args: ["--fix"]

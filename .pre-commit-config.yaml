@@ -1,20 +1,25 @@
 repos:
-  - repo: https://github.com/psf/black
-    rev: 24.3.0
+  # Use local/system hooks to call the installed tools in the active
+  # Python environment. This avoids pre-commit attempting to clone/fetch
+  # remote repositories (which can fail in air-gapped environments).
+  - repo: local
     hooks:
       - id: black
-        language_version: python3
+        name: black (system)
+        entry: black
+        language: system
+        types: [python]
+        args: ["--fast"]
 
-  - repo: https://github.com/charliermarsh/ruff
-    # Pin to a known stable release tag to avoid missing/tag checkout errors during
-    # pre-commit initialization. If this tag becomes outdated, update to a
-    # newer stable ruff release (for example: 'v0.1.58').
-    rev: v0.1.58
-    hooks:
-      - id: ruff
-        args: ["--fix"]
-
-  - repo: https://github.com/pre-commit/mirrors-isort
-    rev: v5.13.0
-    hooks:
       - id: isort
+        name: isort (system)
+        entry: isort
+        language: system
+        types: [python]
+
+      - id: ruff
+        name: ruff (system)
+        entry: ruff
+        language: system
+        types: [python]
+        args: ["--fix"]

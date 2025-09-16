@@ -17,6 +17,7 @@ from backend.rag_api import views  # noqa: E402
 # Ensure docs root is an empty temp dir to make ingest quick
 tmpd = tempfile.mkdtemp()
 os.environ["DOCS_ROOT"] = tmpd
+os.environ["EDGE_MODE"] = "async"
 
 rf = RequestFactory()
 req = rf.post("/api/ingest")

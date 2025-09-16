@@ -6,31 +6,32 @@ stored in metas, it will attempt to reconstruct them from the Faiss index.
 Usage:
   python scripts/export_faiss_full.py --index vector_store/index.faiss --meta vector_store/meta.jsonl --out out.jsonl
 """
-import json
+
 import argparse
+import json
 import os
 import sys
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.rag.vector_store import FaissStore
+from src.rag.vector_store import FaissStore  # noqa: E402
 
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--index', required=True)
-    p.add_argument('--meta', required=True)
-    p.add_argument('--out', required=True)
+    p.add_argument("--index", required=True)
+    p.add_argument("--meta", required=True)
+    p.add_argument("--out", required=True)
     args = p.parse_args()
 
     store = FaissStore(args.index, args.meta)
     metas = store.get_metas_snapshot()
     out_count = 0
-    with open(args.out, 'w', encoding='utf-8') as fo:
+    with open(args.out, "w", encoding="utf-8") as fo:
         for idx, m in enumerate(metas):
-            vec = m.get('vector')
+            vec = m.get("vector")
             if vec is None:
                 # try to reconstruct from faiss index if available
                 try:
@@ -40,11 +41,11 @@ def main():
                         vec = list(map(float, v))
                 except Exception:
                     vec = None
-            item = {'hash': m.get('hash'), 'meta': m, 'vector': vec}
-            fo.write(json.dumps(item, ensure_ascii=False) + '\n')
+            item = {"hash": m.get("hash"), "meta": m, "vector": vec}
+            fo.write(json.dumps(item, ensure_ascii=False) + "\n")
             out_count += 1
-    print('exported', out_count, 'items to', args.out)
+    print("exported", out_count, "items to", args.out)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -176,10 +176,24 @@ def ingest(request: HttpRequest):
     from src.rag.vector_store import build_or_update
 
     s = get_src_settings()
-    raw = ingest_to_raw(s.docs_root)
-    chunks = adaptive_chunk(raw, s.chunk_size, s.chunk_overlap)
-    added = build_or_update(chunks, _GLOBAL["store"], _GLOBAL["embed"])
-    return JsonResponse({"raw_items": len(raw), "chunks": len(chunks), "added": int(added)})
+    # EDGE_MODE=sync will run a synchronous, tightly-coupled ingest fast-path
+    # which is simpler for edge deployments and reduces orchestration overhead.
+    edge_mode = os.environ.get("EDGE_MODE", "sync").lower()
+    if edge_mode == "sync":
+        # run locally and return the result immediately
+        try:
+            from backend.tasks import run_ingest_sync
+
+            res = run_ingest_sync()
+            return JsonResponse(res)
+        except Exception as e:
+            return JsonResponse({"error": "ingest_failed", "detail": str(e)}, status=500)
+    else:
+        # fallback: existing inline ingest (or could enqueue to Celery if configured)
+        raw = ingest_to_raw(s.docs_root)
+        chunks = adaptive_chunk(raw, s.chunk_size, s.chunk_overlap)
+        added = build_or_update(chunks, _GLOBAL.get("store"), _GLOBAL.get("embed"))
+        return JsonResponse({"raw_items": len(raw), "chunks": len(chunks), "added": int(added)})
 
 
 def _db_path() -> str:

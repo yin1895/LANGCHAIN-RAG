@@ -1,4 +1,5 @@
 import os
+
 from celery import Celery
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -8,8 +9,8 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 _broker = REDIS_URL
 _backend = REDIS_URL
 if REDIS_URL and REDIS_URL.startswith("memory://"):
-	_broker = REDIS_URL
-	_backend = "rpc://"
+    _broker = REDIS_URL
+    _backend = "rpc://"
 
 # Create Celery app and export both `app` and `celery` names for compatibility
 app = Celery("backend", broker=_broker, backend=_backend)
@@ -23,7 +24,7 @@ celery = app
 
 # Optionally autodiscover tasks in the backend package
 try:
-	app.autodiscover_tasks(['backend'])
+    app.autodiscover_tasks(["backend"])
 except Exception:
-	# best-effort: if autodiscover fails during static analysis, ignore
-	pass
+    # best-effort: if autodiscover fails during static analysis, ignore
+    pass

@@ -1,4 +1,5 @@
 import os
+import os.path
 from functools import lru_cache
 
 from dotenv import load_dotenv
@@ -18,7 +19,7 @@ class Settings(BaseModel):
         )
     )
     docs_root: str = Field(
-        default_factory=lambda: os.getenv("DOCS_ROOT", "2025国赛创新型算法+源代码汇总！")
+        default_factory=lambda: os.path.abspath(os.getenv("DOCS_ROOT", "./docs"))
     )
     vector_store_path: str = Field(
         default_factory=lambda: os.getenv("VECTOR_STORE_PATH", "vector_store/index.faiss")

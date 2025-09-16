@@ -28,6 +28,9 @@ _ASK_SEMAPHORE = asyncio.Semaphore(
     int((settings and getattr(settings, "ASK_MAX_CONCURRENCY", None)) or 32)
 )
 
+# Ingest job tracking for async mode
+_INGEST_JOBS = {}
+
 # Repo root used for locating resources
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -47,6 +50,7 @@ def _ensure_components():
     from src.rag.llm import get_default_llm
     from src.rag.vector_store import FaissStore
 
+    # read project settings locally for initialization
     s = get_src_settings()
     if _GLOBAL["embed"] is None:
         _GLOBAL["embed"] = OllamaEmbeddings(s.embed_model)
@@ -170,16 +174,66 @@ def ingest(request: HttpRequest):
         return JsonResponse({"error": "method not allowed"}, status=405)
     # Ensure components and project path are set up, then import ingestion helpers
     _ensure_components()
-    from src.config import get_settings as get_src_settings
-    from src.ingestion.chunking import adaptive_chunk
-    from src.ingestion.docx_parser import ingest_to_raw
-    from src.rag.vector_store import build_or_update
 
-    s = get_src_settings()
-    raw = ingest_to_raw(s.docs_root)
-    chunks = adaptive_chunk(raw, s.chunk_size, s.chunk_overlap)
-    added = build_or_update(chunks, _GLOBAL["store"], _GLOBAL["embed"])
-    return JsonResponse({"raw_items": len(raw), "chunks": len(chunks), "added": int(added)})
+    # EDGE_MODE=sync will run a synchronous, tightly-coupled ingest fast-path
+    # which is simpler for edge deployments and reduces orchestration overhead.
+    edge_mode = os.environ.get("EDGE_MODE", "sync").lower()
+    if edge_mode == "sync":
+        # run locally and return the result immediately
+        try:
+            from backend.tasks import run_ingest_sync
+
+            res = run_ingest_sync()
+            return JsonResponse(res)
+        except Exception as e:
+            return JsonResponse({"error": "ingest_failed", "detail": str(e)}, status=500)
+    else:
+        # async mode: try enqueue to Celery if available; otherwise start a
+        # background thread and return a job_id the client can poll.
+        job_id = str(uuid.uuid4())
+        _INGEST_JOBS[job_id] = {
+            "status": "queued",
+            "started_at": None,
+            "finished_at": None,
+            "error": None,
+            "added": 0,
+        }
+        # prefer Celery if configured
+        try:
+            from backend.tasks import run_ingest
+
+            # schedule Celery task
+            run_ingest.delay(job_id)
+        except Exception:
+            # fallback to background thread to avoid requiring Celery in edge
+            import threading
+
+            def _bg():
+                try:
+                    from backend.tasks import run_ingest_task
+
+                    _INGEST_JOBS[job_id]["status"] = "running"
+                    _INGEST_JOBS[job_id]["started_at"] = int(time.time())
+                    res = run_ingest_task(job_id)
+                    _INGEST_JOBS[job_id]["added"] = int(res.get("added", 0))
+                    _INGEST_JOBS[job_id]["status"] = "finished"
+                    _INGEST_JOBS[job_id]["finished_at"] = int(time.time())
+                except Exception as e:
+                    _INGEST_JOBS[job_id]["status"] = "error"
+                    _INGEST_JOBS[job_id]["error"] = str(e)
+                    _INGEST_JOBS[job_id]["finished_at"] = int(time.time())
+
+            t = threading.Thread(target=_bg, daemon=True)
+            t.start()
+        return JsonResponse({"job_id": job_id})
+
+
+@csrf_exempt
+def ingest_status(request: HttpRequest, job_id: str):
+    info = _INGEST_JOBS.get(job_id)
+    if not info:
+        return JsonResponse({"error": "job_not_found"}, status=404)
+    return JsonResponse(info)
 
 
 def _db_path() -> str:

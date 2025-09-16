@@ -1,9 +1,14 @@
+# ruff: noqa: E402
 import os
 import sys
 import time
 
 sys.path.insert(0, os.path.abspath("."))
+# ensure Django settings are available for DRF imports
+import os as _os
 import tempfile  # noqa: E402
+
+_os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.test_settings")
 
 from django.test.client import RequestFactory  # noqa: E402
 

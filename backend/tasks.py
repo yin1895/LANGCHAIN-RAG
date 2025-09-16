@@ -5,10 +5,14 @@ and configured via backend.celery_app.
 import time
 import traceback
 
-try:
-    from backend.rag_api.views import _INGEST_JOBS
-except Exception:
-    _INGEST_JOBS = None
+
+def _get_ingest_jobs():
+    try:
+        from backend.rag_api import views as _views
+
+        return getattr(_views, "_INGEST_JOBS", None)
+    except Exception:
+        return None
 
 
 def run_ingest_task(job_id: str):
@@ -16,6 +20,7 @@ def run_ingest_task(job_id: str):
     can call it. If _INGEST_JOBS is available, update job status there for visibility.
     """
     jid = job_id
+    _INGEST_JOBS = _get_ingest_jobs()
     if _INGEST_JOBS is not None:
         _INGEST_JOBS[jid] = {
             "status": "running",
@@ -31,9 +36,21 @@ def run_ingest_task(job_id: str):
         from src.rag.vector_store import build_or_update
 
         s = get_src_settings()
+        # try to reuse the same initialized components from the API process if available
+        try:
+            from backend.rag_api import views as _views
+
+            _views._ensure_components()
+            store = _views._GLOBAL.get("store")
+            embed_model = _views._GLOBAL.get("embed")
+        except Exception:
+            store = None
+            embed_model = None
+
         raw = ingest_to_raw(s.docs_root)
         chunks = adaptive_chunk(raw, s.chunk_size, s.chunk_overlap)
-        added = build_or_update(chunks, None, None)
+        added = build_or_update(chunks, store, embed_model)
+        _INGEST_JOBS = _get_ingest_jobs()
         if _INGEST_JOBS is not None:
             _INGEST_JOBS[jid]["added"] = int(added)
             _INGEST_JOBS[jid]["status"] = "finished"
@@ -41,6 +58,7 @@ def run_ingest_task(job_id: str):
         return {"added": int(added)}
     except Exception as e:
         tb = traceback.format_exc()
+        _INGEST_JOBS = _get_ingest_jobs()
         if _INGEST_JOBS is not None:
             _INGEST_JOBS[jid]["status"] = "error"
             _INGEST_JOBS[jid]["error"] = str(e)
@@ -63,9 +81,19 @@ def run_ingest_sync():
         from src.rag.vector_store import build_or_update
 
         s = get_src_settings()
+        try:
+            from backend.rag_api import views as _views
+
+            _views._ensure_components()
+            store = _views._GLOBAL.get("store")
+            embed_model = _views._GLOBAL.get("embed")
+        except Exception:
+            store = None
+            embed_model = None
+
         raw = ingest_to_raw(s.docs_root)
         chunks = adaptive_chunk(raw, s.chunk_size, s.chunk_overlap)
-        added = build_or_update(chunks, None, None)
+        added = build_or_update(chunks, store, embed_model)
         return {"added": int(added), "raw_items": len(raw), "chunks": len(chunks)}
     except Exception:
         raise

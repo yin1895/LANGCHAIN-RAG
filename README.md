@@ -94,6 +94,28 @@ python -m src.cli ingest               # 增量更新
 python -m src.cli ingest --rebuild     # 删除旧索引后全量重建
 ```
 
+## 准备检索文档目录
+
+默认项目会使用仓库根的 `docs/` 目录作为待解析文档（DOCS_ROOT）。请把要用于检索的原始文件放在该目录下，支持的文件类型包括：`.docx`, `.pdf`, `.txt`。
+
+建议：
+- 每次批量导入前先确认文件大小，不要将大于 50 MB 的文件直接放入 `docs/`（大文件会显著增加索引和上传压力）。
+- 对于扫描版 PDF，建议先做 OCR，然后再放入 `docs/`。
+- 如果你需要自定义路径或在生产环境使用不同目录，请在 `.env` 设置 `DOCS_ROOT=/path/to/your/docs` 或在 `src/config.py` 中更改 `DOCS_ROOT`。
+
+示例：
+```powershell
+# 将文档放到默认 docs 目录
+mkdir docs
+Copy-Item -Path "C:\some\folder\*.docx" -Destination docs\ -Recurse
+
+# 或者在 .env 中指定自定义路径
+Set-Content -Path .env -Value "DOCS_ROOT=./my_documents" -Encoding UTF8
+```
+
+注意：`docs/` 目录应包含原始文档文件，任何由摄取生成的中间文件（向量索引、meta.jsonl、exports 等）不应放入此目录，以避免误提交。
+
+
 ### 单轮问答
 ```
 python -m src.cli ask -q "请比较AHP与熵权法的权重获取差异" --show-context

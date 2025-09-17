@@ -11,6 +11,7 @@ urlpatterns = [
     path("ask", views.AskView.as_view(), name="ask"),
     path("ask/stream", views.AskStreamView.as_view(), name="ask_stream"),
     path("upload", views.upload_file, name="upload"),
+    path("uploads", views.list_docs, name="list_docs"),
     # auth
     path("register", views.register, name="register"),
     path("login", views.login, name="login"),

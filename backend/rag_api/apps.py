@@ -8,7 +8,8 @@ load_dotenv()
 
 class RagApiConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "rag_api"
+    # use full import path to match INSTALLED_APPS entry in backend.rag_backend.settings
+    name = "backend.rag_api"
 
     def ready(self):  # pragma: no cover
         # Optional warmup to improve first-request latency

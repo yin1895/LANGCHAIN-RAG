@@ -56,13 +56,17 @@ meta.jsonl
 # Node
 node_modules/
 
-# Temp
+# Temp and backup files
 *.tmp
 *.bak
+*.swp
+*.swo
 __pycache__/
 vector_store/
 *.pyc
 .ipynb_checkpoints/
+*_old.*
+*_backup.*
 
 # Large example / dataset folders (not needed in repo)
 2025国赛/
@@ -77,8 +81,17 @@ frontend/.vite/
 .vscode/
 .idea/
 
-# Misc
-*.swp
-*.swo
-*.DS_Store
-Thumbs.db
+# Runtime files
+*.pid
+*.seed
+*.pid.lock
+
+# Local scripts used for debugging; do not commit
+scripts/
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output

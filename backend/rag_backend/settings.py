@@ -17,7 +17,8 @@ INSTALLED_APPS = [
     # APIs
     "rest_framework",
     "corsheaders",
-    "rag_api",
+    # use full import path for the app package
+    "backend.rag_api",
 ]
 
 MIDDLEWARE = [
@@ -75,7 +76,8 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rag_api.auth.JwtSqliteAuthentication",
+        # fully qualified module path so Django can import it when DJANGO_SETTINGS_MODULE
+        "backend.rag_api.auth.JwtSqliteAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",

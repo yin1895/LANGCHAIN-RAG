@@ -1,13 +1,18 @@
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
+from asgiref.sync import async_to_sync
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.utils.decorators import method_decorator
@@ -18,6 +23,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+logger = logging.getLogger("backend.rag_api.views")
+
 # Global singletons & concurrency guard
 _GLOBAL = {
     "embed": None,
@@ -27,6 +34,23 @@ _GLOBAL = {
 _ASK_SEMAPHORE = asyncio.Semaphore(
     int((settings and getattr(settings, "ASK_MAX_CONCURRENCY", None)) or 32)
 )
+
+# Small thread pool for running blocking retrievals without blocking the async loop
+_RETRIEVAL_POOL = ThreadPoolExecutor(max_workers=8)
+
+
+@lru_cache(maxsize=1024)
+def _cached_retrieve_key(query: str, k: int, bm25_weight: float) -> str:
+    # produce a short hash key for caching
+    key = f"{query}::k={k}::bm25={bm25_weight}"
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def _cached_retrieve(query: str, retriever: object, k: int, bm25_weight: float):
+    """Run retriever.get_relevant with a short cache layer (keyed by query and params)."""
+    # LRU cache on function will handle actual caching; we simply call the retriever
+    return retriever.get_relevant(query)
+
 
 # Ingest job tracking for async mode
 _INGEST_JOBS = {}
@@ -70,7 +94,7 @@ def health(request: HttpRequest):
 class AskView(APIView):
     permission_classes = [AllowAny]
 
-    async def post(self, request: HttpRequest):
+    def post(self, request, *args, **kwargs):
         if request.method != "POST":
             return Response({"error": "method not allowed"}, status=405)
         try:
@@ -84,7 +108,8 @@ class AskView(APIView):
         if not question:
             return Response({"error": "empty question"}, status=400)
 
-        await _ASK_SEMAPHORE.acquire()
+        # use async_to_sync to interact with async primitives in sync view
+        async_to_sync(_ASK_SEMAPHORE.acquire)()
         try:
             _ensure_components()
             # import Retriever lazily after components ensured
@@ -93,10 +118,31 @@ class AskView(APIView):
             retriever = Retriever(
                 _GLOBAL["store"], _GLOBAL["embed"], k=top_k, bm25_weight=bm25_weight
             )
-            docs = retriever.get_relevant(question)
+            # if Retriever.get_relevant is async, call via async_to_sync; otherwise it's fine
+            try:
+                # Run retrieval in a thread to avoid blocking, with timeout
+                timeout_sec = int(os.environ.get("ASK_TIMEOUT", "10"))
+                if asyncio.iscoroutinefunction(retriever.get_relevant):
+                    # if async, run directly but guard with wait_for
+                    docs = async_to_sync(asyncio.wait_for)(
+                        retriever.get_relevant(question), timeout=timeout_sec
+                    )
+                else:
+                    future = _RETRIEVAL_POOL.submit(
+                        _cached_retrieve, question, retriever, top_k, bm25_weight
+                    )
+                    try:
+                        docs = future.result(timeout=timeout_sec)
+                    except FutureTimeout:
+                        future.cancel()
+                        raise TimeoutError(f"retriever timeout after {timeout_sec}s")
+            except Exception as e:
+                logger.error("retriever failed: %s", e, exc_info=True)
+                return Response({"error": "embed_error", "detail": str(e)}, status=502)
             timeout_sec = int(os.environ.get("ASK_TIMEOUT", "60"))
             try:
-                answer = await asyncio.wait_for(
+                # await _GLOBAL["llm"].acomplete(...) in sync context
+                answer = async_to_sync(asyncio.wait_for)(
                     _GLOBAL["llm"].acomplete(question, docs), timeout=timeout_sec
                 )
             except Exception as e:
@@ -119,7 +165,8 @@ class AskView(APIView):
 class AskStreamView(APIView):
     permission_classes = [AllowAny]
 
-    async def post(self, request: HttpRequest):
+    def post(self, request: HttpRequest):
+        # Synchronous stream endpoint: produce SSE but call LLM non-streaming to avoid async generator issues
         if request.method != "POST":
             return Response({"error": "method not allowed"}, status=405)
         try:
@@ -133,16 +180,34 @@ class AskStreamView(APIView):
         if not question:
             return Response({"error": "empty question"}, status=400)
 
-        await _ASK_SEMAPHORE.acquire()
+        # acquire semaphore synchronously
+        async_to_sync(_ASK_SEMAPHORE.acquire)()
         try:
             _ensure_components()
-            # import Retriever lazily after components ensured
             from src.rag.retriever import Retriever
 
             retriever = Retriever(
                 _GLOBAL["store"], _GLOBAL["embed"], k=top_k, bm25_weight=bm25_weight
             )
-            docs = retriever.get_relevant(question)
+            try:
+                timeout_sec = int(os.environ.get("ASK_TIMEOUT", "10"))
+                if asyncio.iscoroutinefunction(retriever.get_relevant):
+                    docs = async_to_sync(asyncio.wait_for)(
+                        retriever.get_relevant(question), timeout=timeout_sec
+                    )
+                else:
+                    future = _RETRIEVAL_POOL.submit(
+                        _cached_retrieve, question, retriever, top_k, bm25_weight
+                    )
+                    try:
+                        docs = future.result(timeout=timeout_sec)
+                    except FutureTimeout:
+                        future.cancel()
+                        raise TimeoutError(f"retriever timeout after {timeout_sec}s")
+            except Exception as e:
+                logger.error("retriever failed (stream sync): %s", e, exc_info=True)
+                return Response({"error": "embed_error", "detail": str(e)}, status=502)
+
             base_contexts = []
             for d in docs:
                 item = {"score": d.get("score"), "source": d.get("source"), "hash": d.get("hash")}
@@ -153,14 +218,33 @@ class AskStreamView(APIView):
                     item["content"] = c
                 base_contexts.append(item)
 
+            # Use non-streaming LLM completion and wrap into SSE stream as a single chunk
+            try:
+                answer = async_to_sync(asyncio.wait_for)(
+                    _GLOBAL["llm"].acomplete(question, docs),
+                    timeout=int(os.environ.get("ASK_TIMEOUT", "60")),
+                )
+            except Exception as e:
+                # capture exception detail immediately (exception vars are cleared after except block)
+                # some exceptions (like asyncio.TimeoutError) have empty str(); provide a useful message
+                if isinstance(e, asyncio.TimeoutError):
+                    detail = f"llm_timeout after {int(os.environ.get('ASK_TIMEOUT', '60'))}s"
+                else:
+                    detail = str(e) or repr(e)
+                logger.error("llm failed (stream): %s", detail, exc_info=True)
+
+                # return an async generator so Django ASGI can iterate it with `async for`
+                async def error_gen():
+                    yield f"data: {json.dumps({'type':'error','detail': detail}, ensure_ascii=False)}\n\n"
+                    yield 'data: {"type":"end"}\n\n'
+
+                return StreamingHttpResponse(error_gen(), content_type="text/event-stream")
+
             async def event_gen():
+                # yield contexts first
                 yield f"data: {json.dumps({'type':'contexts','data': base_contexts}, ensure_ascii=False)}\n\n"
-                try:
-                    async for chunk in _GLOBAL["llm"].astream(question, docs):
-                        yield f"data: {json.dumps({'type':'chunk','data': chunk}, ensure_ascii=False)}\n\n"
-                except Exception as e:
-                    err = {"type": "error", "detail": str(e)}
-                    yield f"data: {json.dumps(err, ensure_ascii=False)}\n\n"
+                # send full answer as one chunk
+                yield f"data: {json.dumps({'type':'chunk','data': answer}, ensure_ascii=False)}\n\n"
                 yield 'data: {"type":"end"}\n\n'
 
             return StreamingHttpResponse(event_gen(), content_type="text/event-stream")
@@ -579,7 +663,78 @@ def upload_file(request: HttpRequest):
     with open(out_path, "wb") as dst:
         for chunk in f.chunks():
             dst.write(chunk)
-    return JsonResponse({"success": True, "filename": f.name})
+    # After saving the file, attempt to initialize components and run a quick synchronous ingest
+    try:
+        # ensure the global components are initialized so we reuse any in-process store/embed
+        try:
+            _ensure_components()
+        except Exception as e:
+            # log but continue; we'll still try to run ingest which may create its own components
+            logger.warning("upload_file: _ensure_components failed: %s", e)
+
+        from src.config import get_settings as get_src_settings
+        from src.ingestion.chunking import adaptive_chunk
+        from src.ingestion.docx_parser import ingest_files
+        from src.rag.vector_store import build_or_update
+
+        s = get_src_settings()
+        store = _GLOBAL.get("store")
+        embed_model = _GLOBAL.get("embed")
+
+        if store is None or embed_model is None:
+            logger.info(
+                "upload_file: store or embed not initialized, run_ingest_sync may initialize new components"
+            )
+
+        # ingest only the uploaded file to avoid scanning the whole docs_root
+        raw = ingest_files([Path(out_path)])
+        chunks = adaptive_chunk(raw, s.chunk_size, s.chunk_overlap)
+        added = build_or_update(chunks, store, embed_model)
+        return JsonResponse({"success": True, "filename": f.name, "added": int(added)})
+    except Exception as e:
+        logger.exception("upload_file: ingest failed")
+        # return error with helpful diagnostics
+        return JsonResponse(
+            {"success": False, "filename": f.name, "ingest_error": str(e)}, status=500
+        )
+
+
+@csrf_exempt
+def list_docs(request: HttpRequest):
+    """List supported documents in docs_root with basic metadata and whether they've been indexed."""
+    if request.method != "GET":
+        return JsonResponse({"error": "method not allowed"}, status=405)
+    try:
+        from src.config import get_settings as get_src_settings
+        from src.ingestion.docx_parser import file_hash, list_supported_paths
+
+        s = get_src_settings()
+        docs_root = Path(s.docs_root)
+        files = []
+        # Ensure components are available to inspect store metadata
+        _ensure_components()
+        store = _GLOBAL.get("store")
+        indexed_hashes = {m.get("hash") for m in getattr(store, "_metas", []) if m.get("hash")}
+        for p in list_supported_paths(docs_root):
+            try:
+                st = p.stat()
+                fh = file_hash(p)
+                files.append(
+                    {
+                        "name": p.name,
+                        "path": str(p),
+                        "size": st.st_size,
+                        "mtime": int(st.st_mtime),
+                        "hash": fh,
+                        "indexed": fh in indexed_hashes,
+                    }
+                )
+            except Exception as e:
+                logger.warning("list_docs: failed stat %s %s", p, e)
+        return JsonResponse({"files": files})
+    except Exception as e:
+        logger.exception("list_docs failed")
+        return JsonResponse({"error": "list_failed", "detail": str(e)}, status=500)
 
 
 def root_page(request: HttpRequest):

@@ -1,51 +1,31 @@
-RECLONE / RESET INSTRUCTIONS
-===========================
+# 仓库重置说明
 
-为什么需要重新克隆
-------------------
-我们对 Git 历史执行了清理（移除大量示例/临时数据文件），这会改变仓库历史（rewrite）。为了避免本地与远程历史冲突，所有协作者应当重新克隆或重置他们的本地仓库。
+## 背景
+项目经过重大优化，清理了大量历史文件和依赖，Git历史已重写。协作者需要重新克隆仓库以避免冲突。
 
-推荐步骤（最安全，推荐）
---------------------------
-1. 备份你本地未提交的改动（如果有）：
-   - 保存补丁：
-     git diff > mywork.patch
-   - 或者把改动暂存到临时分支：
-     git checkout -b local-work
-     git add -A
-     git commit -m "WIP: backup before reclone"
+## 快速重置（推荐）
 
-2. 删除本地仓库并重新克隆：
-   - Windows / PowerShell:
-     Remove-Item -Recurse -Force .git
-     cd ..
-     git clone git@github.com:yin1895/LANGCHAIN-RAG.git
+```bash
+# 1. 备份当前工作（可选）
+git stash
 
-   - 或者更简单地在父目录运行：
-     rm -rf LANGCHAIN-RAG && git clone git@github.com:yin1895/LANGCHAIN-RAG.git
+# 2. 重新克隆
+cd ..
+rm -rf LANGCHAIN-RAG
+git clone git@github.com:yin1895/LANGCHAIN-RAG.git
+cd LANGCHAIN-RAG
 
-3. 如果你之前保存了补丁（mywork.patch），应用补丁：
-   git apply mywork.patch
+# 3. 恢复之前的工作（如需要）
+git stash pop
+```
 
-替代：在不重新克隆的情况下硬重置（高级用户）
-------------------------------------------------
-如果你非常熟悉 git 并且确认要在当前目录操作，你可以：
+## 注意事项
+- 执行前请确保本地修改已提交或备份
+- 建议在操作前与项目维护者确认
+- 如遇问题请联系仓库管理员
 
-1. 丢弃未提交的更改（不可逆）：
-   git reset --hard
-   git clean -fdx
-
-2. 从远程强制拉取（覆盖本地）：
-   git fetch origin
-   git checkout dev
-   git reset --hard origin/dev
-
-注意事项
---------
-- 在执行上述任何命令之前，请务必备份你的本地工作（补丁或临时分支）。
-- 如果你对历史重写或强制拉取有疑问，请联系仓库维护者以获得帮助。
-
-联系人
-------
-仓库拥有者: yin1895
-Issues 或邮件用于沟通：请在 GitHub 仓库中打开 issue 或通过项目中留的联系方式联系。
+## 项目优化内容
+- 移除FastAPI冗余后端
+- 清理75%的脚本文件和86%的测试文件  
+- 统一Django后端架构
+- 精简依赖和配置文件

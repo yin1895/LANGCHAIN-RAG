@@ -5,6 +5,7 @@
 - 基础 URL: `http://localhost:9000/api`
 - 认证方式: Bearer Token (JWT)
 - 数据格式: JSON
+- 后端框架: Django + Django REST Framework
 
 ## 核心接口
 

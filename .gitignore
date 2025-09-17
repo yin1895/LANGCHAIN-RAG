@@ -86,6 +86,9 @@ frontend/.vite/
 *.seed
 *.pid.lock
 
+# Local scripts used for debugging; do not commit
+scripts/
+
 # Coverage directory used by tools like istanbul
 coverage/
 *.lcov

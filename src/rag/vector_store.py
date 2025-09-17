@@ -51,11 +51,29 @@ class FaissStore:
         return results
 
     def persist(self):
+        # Ensure target directories exist before attempting to write files
+        try:
+            if self.index_path.parent:
+                self.index_path.parent.mkdir(parents=True, exist_ok=True)
+            if self.meta_path.parent:
+                self.meta_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.exception("failed to create vector_store directories: %s", e)
+            raise
+
         if self._index is not None:
-            faiss.write_index(self._index, str(self.index_path))
-        with self.meta_path.open("w", encoding="utf-8") as f:
-            for m in self._metas:
-                f.write(json.dumps(m, ensure_ascii=False) + "\n")
+            try:
+                faiss.write_index(self._index, str(self.index_path))
+            except Exception as e:
+                logger.exception("faiss.write_index failed: %s", e)
+                raise
+        try:
+            with self.meta_path.open("w", encoding="utf-8") as f:
+                for m in self._metas:
+                    f.write(json.dumps(m, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.exception("failed to write meta file %s: %s", self.meta_path, e)
+            raise
 
     def _load(self):
         self._index = faiss.read_index(str(self.index_path))

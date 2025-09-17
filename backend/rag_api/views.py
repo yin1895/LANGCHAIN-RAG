@@ -738,8 +738,13 @@ def list_docs(request: HttpRequest):
 
 
 def root_page(request: HttpRequest):
-    # Serve static/index.html if present (for parity with FastAPI root)
+    """Serve the React frontend's entry point or fallback message."""
     idx = ROOT / "static" / "index.html"
     if idx.exists():
         return HttpResponse(idx.read_text(encoding="utf-8"))
-    return HttpResponse("<html><body><h3>前端页面缺失: 请创建 static/index.html</h3></body></html>")
+    return HttpResponse(
+        "<html><body><h3>RAG 系统</h3>"
+        "<p>前端界面请访问: <a href='http://localhost:5173'>http://localhost:5173</a></p>"
+        "<p>API文档: <a href='/api/'>Django API</a></p>"
+        "</body></html>"
+    )

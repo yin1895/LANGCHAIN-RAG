@@ -22,4 +22,5 @@ repos:
         entry: ruff
         language: system
         types: [python]
-        args: ["--fix"]
+        # ruff requires a subcommand (e.g. `check`) with newer CLI; use `check --fix`
+        args: ["check", "--fix"]
